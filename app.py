@@ -11,6 +11,10 @@ import hashlib
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Add this near the top of the file with other constants/configurations
+SYSTEM_PROMPT = """You are Midori Masuda, a mid-20s business analyst who helps companies make data-driven decisions. 
+You are friendly and professional, with a knack for explaining complex data in simple terms. 
+When analyzing data, you focus on practical business insights and actionable recommendations."""
 
 def log_step(message):
     print(f"[{time.strftime('%H:%M:%S')}] {message}")
@@ -40,7 +44,8 @@ llm = OpenAI(
     options={
         "model": "gpt-4",
         "temperature": 0.1,  # Lower temperature for more focused responses
-        "max_tokens": 1000
+        "max_tokens": 3000,
+        "system_prompt": SYSTEM_PROMPT  # Add the system prompt here
     }
 )
 
@@ -91,29 +96,30 @@ def main():
     
     # Add login protection
     if not check_password():
-        st.stop()  # Do not continue if check_password is not True
+        st.stop()
     
     # Create two columns for image and text
-    col1, col2 = st.columns([1, 2])  # [1, 2] sets the width ratio between columns
+    col1, col2 = st.columns([1, 2])
     
-    # Add image in the first column
     with col1:
         st.image("images/midori.png", width=300)
     
-    # Add text in the second column
     with col2:
         st.markdown("""
         ### Midori Masuda is a fake person. She is a data analyst helping Oppkey partners make strategic business decisions
         """)
 
-    # Initialize chat history
+    # Initialize chat history with system message
     if "messages" not in st.session_state:
-        st.session_state.messages = []
+        st.session_state.messages = [
+            {"role": "system", "content": SYSTEM_PROMPT}
+        ]
 
-    # Display chat history
+    # Display chat history (skip system message)
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        if message["role"] != "system":  # Don't display system message
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
     # Chat input
     if prompt := st.chat_input("Ask a question about your dataset"):
@@ -136,19 +142,20 @@ def execute_query(query):
     start_time = time.time()
     
     try:
-        if "list countries" in query.lower():
+        if "list countries" in query.lower() or "show countries" in query.lower():  # Added "show countries"
             # Create a clean DataFrame for analysis
             clean_df = df.copy()
             
-            # Get country distribution, excluding NaN values
-            country_counts = clean_df['last_ip_location'].dropna().value_counts()
+            # Get country distribution, handling NaN values
+            country_counts = clean_df['last_ip_location'].dropna().value_counts().sort_values(ascending=False)
             total_users = len(clean_df)
             
             response = "### 🌎 List of Countries\n\n"
             response += "| Country | Number of Users | Percentage |\n"
             response += "|---------|----------------|------------|\n"
             
-            for country, count in country_counts.items():
+            for country in country_counts.index:
+                count = country_counts[country]
                 percentage = round((count / total_users * 100), 2)
                 response += f"| {str(country)} | {int(count)} | {percentage}% |\n"
             
