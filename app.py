@@ -134,8 +134,13 @@ def main():
 
     # Display chat history
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        if message["role"] == "user":
+            with st.chat_message("user"):
+                st.markdown(message["content"])
+        else:
+            with st.chat_message("assistant"):
+                st.image("images/midori.png", width=100)
+                st.markdown(message["content"])
 
     # Chat input
     if prompt := st.chat_input("Ask a question about your dataset"):
@@ -145,9 +150,8 @@ def main():
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            
+            st.image("images/midori.png", width=100)
             response = execute_query(prompt)
-            
             st.markdown(response)
         
         st.session_state.messages.append({"role": "assistant", "content": response})
@@ -159,7 +163,136 @@ def execute_query(query):
     start_time = time.time()
     
     try:
-        if "countries" in query.lower():
+        if "most active users" in query.lower():
+            # Create a clean DataFrame for analysis
+            clean_df = df.copy()
+            
+            # Sort by post reads and get top 20
+            top_readers = clean_df.nlargest(20, 'posts_read')
+            
+            response = "### 📚 Most Active Users\n\n"
+            response += "| Rank | Username | Posts Read | Location | Organization |\n"
+            response += "|------|----------|------------|----------|--------------|\n"
+            
+            # Add user details in table format
+            for rank, (_, user) in enumerate(top_readers.iterrows(), 1):
+                username = str(user['username']) if pd.notna(user['username']) else 'No username'
+                posts_read = int(user['posts_read'])
+                location = str(user['last_ip_location']) if pd.notna(user['last_ip_location']) else 'Unknown'
+                org = str(user['organization']) if pd.notna(user['organization']) and user['organization'] != '' else 'No organization'
+                
+                response += f"| {rank} | {username} | {posts_read:,} | {location} | {org} |\n"
+            
+            # Add summary statistics
+            total_posts = clean_df['posts_read'].sum()
+            avg_posts = clean_df['posts_read'].mean()
+            response += f"\n**Total Posts Read:** {total_posts:,}"
+            response += f"\n**Average Posts per User:** {avg_posts:.1f}"
+            
+            # Create analysis DataFrame
+            analysis_df = pd.DataFrame({
+                'Username': top_readers['username'],
+                'Posts Read': top_readers['posts_read'],
+                'Location': top_readers['last_ip_location'],
+                'Organization': top_readers['organization']
+            })
+            
+            # Add analysis section
+            response += "\n\n### 📊 Analysis\n"
+            analysis = analyze_table_with_openai(analysis_df, "Most active users in the dataset")
+            response += analysis
+            
+            return response
+            
+        elif "organizations" in query.lower():
+            # Create a clean DataFrame for analysis
+            clean_df = df.copy()
+            
+            # Extract location if specified
+            location = None
+            if "in" in query.lower():
+                location = query.lower().split("in")[-1].strip().title()
+                
+                # Handle US variations
+                us_variants = {
+                    "usa": "United States",
+                    "us": "United States",
+                    "united states": "United States",
+                    "america": "United States",
+                    "u.s.": "United States",
+                    "u.s.a.": "United States"
+                }
+                
+                if location.lower() in us_variants:
+                    location = "United States"
+                
+                # Debug: Print unique location values
+                log_step("Unique location values in data:")
+                log_step(clean_df['last_ip_location'].unique())
+                
+                # Filter for location if specified
+                if location:
+                    # More flexible location matching
+                    location_mask = (
+                        (clean_df['last_ip_location'].fillna('').str.lower().str.contains('united states')) |
+                        (clean_df['last_ip_location'].fillna('').str.lower().str.contains('usa')) |
+                        (clean_df['last_ip_location'].fillna('').str.lower().str.contains('u.s.')) |
+                        (clean_df['last_ip_location'].fillna('').str.lower().str.contains('america'))
+                    )
+                    
+                    # Debug: Print matching locations
+                    log_step("Matching locations:")
+                    log_step(clean_df[location_mask]['last_ip_location'].unique())
+                    
+                    clean_df = clean_df[location_mask]
+            
+            # Define organizations to exclude (case-insensitive)
+            exclude_orgs = {
+                'oppkey', 'self', 'personal', 'individual', 'private', 'none', 
+                'n/a', 'na', '', 'unknown', 'unemployed', 'student', 'freelance',
+                'independent', 'retired', 'other', 'test', 'demo', 'example'
+            }
+            
+            # Filter out excluded organizations
+            clean_df = clean_df[
+                ~clean_df['organization'].fillna('').str.lower().isin(exclude_orgs)
+            ]
+            
+            # Get organization counts
+            org_counts = clean_df['organization'].value_counts()
+            total_users = len(clean_df)
+            
+            if total_users == 0:
+                return f"No organizations found{f' in {location}' if location else ''}. This might be due to location matching or data filtering."
+            
+            response = "### 🏢 Organizations in the Dataset\n\n"
+            response += "| Organization | Number of Users |\n"
+            response += "|--------------|----------------|\n"
+            
+            # Create a DataFrame for analysis
+            analysis_df = pd.DataFrame({
+                'Organization': org_counts.index,
+                'Number of Users': org_counts.values,
+                'Percentage': (org_counts.values / total_users * 100).round(1)
+            })
+            
+            # Sort by count and display
+            for org, count in org_counts.items():
+                percentage = float(count) / total_users * 100
+                response += f"| {str(org)} | {int(count):,} ({percentage:.1f}%) |\n"
+            
+            response += f"\n**Total Organizations:** {len(org_counts):,}"
+            response += f"\n**Total Users:** {total_users:,}"
+            
+            # Add analysis section
+            context = f"Organization distribution{f' in {location}' if location else ''}"
+            response += f"\n\n### 📊 Analysis\n"
+            analysis = analyze_table_with_openai(analysis_df, context)
+            response += analysis
+            
+            return response
+            
+        elif "countries" in query.lower():
             # Create a clean DataFrame for analysis
             clean_df = df.copy()
             
@@ -191,6 +324,13 @@ def execute_query(query):
             response += "| Country | Number of Users |\n"
             response += "|---------|----------------|\n"
             
+            # Create a DataFrame for analysis
+            analysis_df = pd.DataFrame({
+                'Country': country_counts.index,
+                'Number of Users': country_counts.values,
+                'Percentage': (country_counts.values / total_users * 100).round(1)
+            })
+            
             # Sort by count and display
             for country, count in country_counts.items():
                 percentage = float(count) / total_users * 100
@@ -198,6 +338,11 @@ def execute_query(query):
             
             response += f"\n**Total Countries:** {len(country_counts):,}"
             response += f"\n**Total Users:** {total_users:,}"
+            
+            # Add analysis section
+            response += "\n\n### 📊 Analysis\n"
+            analysis = analyze_table_with_openai(analysis_df, "Country distribution of users in the dataset")
+            response += analysis
             
             return response
             
@@ -303,28 +448,6 @@ def execute_query(query):
                         response += f"\n**{industry}**: " + ", ".join(sample_orgs)
             
             return response
-        elif "organizations" in query.lower():
-            # Create a clean DataFrame for analysis
-            clean_df = df.copy()
-            
-            # Get organization counts, handling NaN and empty values
-            org_counts = clean_df['organization'].fillna('No organization').replace('', 'No organization').value_counts()
-            total_users = len(clean_df)
-            
-            response = "### 🏢 Organizations in the Dataset\n\n"
-            response += "| Organization | Number of Users | Percentage |\n"
-            response += "|--------------|----------------|------------|\n"
-            
-            # Sort by count and display
-            for org, count in org_counts.items():
-                percentage = (count / total_users * 100)
-                response += f"| {str(org)} | {int(count):,} | {percentage:.1f}% |\n"
-            
-            response += f"\n**Total Organizations:** {len(org_counts):,}"
-            response += f"\n**Total Users:** {total_users:,}"
-            
-            return response
-            
         elif any(x in query.lower() for x in ["show users", "users from", "list users in"]):
             # Create a clean DataFrame for analysis
             clean_df = df.copy()
@@ -398,6 +521,20 @@ def execute_query(query):
                     city = str(user['last_ip_location']) if pd.notna(user['last_ip_location']) else 'Unknown location'
                     response += f"| {name} | {org} | {city} |\n"
                 
+                # Add organization analysis
+                if len(users_to_show) > 0:
+                    # Create organization analysis DataFrame
+                    org_analysis = pd.DataFrame({
+                        'Organization': users_to_show['organization'].value_counts().index,
+                        'Number of Users': users_to_show['organization'].value_counts().values,
+                        'Percentage': (users_to_show['organization'].value_counts().values / len(users_to_show) * 100).round(1)
+                    })
+                    
+                    # Add analysis section
+                    response += f"\n\n### 📊 Organization Analysis for {location}\n"
+                    analysis = analyze_table_with_openai(org_analysis, f"Organization distribution in {location}")
+                    response += analysis
+                
                 return response
             else:
                 return "Please specify a valid location or organization name"
@@ -436,6 +573,167 @@ def execute_query(query):
         log_step(f"Error occurred after {elapsed_time:.2f} seconds")
         logger.error(f"Error: {str(e)}", exc_info=True)
         return f"Error processing query: {str(e)}"
+
+def analyze_table_with_openai(table_data, context):
+    """Analyze table data using OpenAI with sales-focused insights"""
+    try:
+        # Format the DataFrame in a more readable way
+        if isinstance(table_data, pd.DataFrame):
+            # Convert DataFrame to a formatted string with proper alignment
+            formatted_data = table_data.to_string(index=False)
+            
+            # Create context-appropriate summary
+            if "most active users" in context.lower():
+                summary = f"""
+Summary Statistics:
+- Total Users Analyzed: {len(table_data)}
+- Top 5 Users by Posts Read: {', '.join(table_data.nlargest(5, 'Posts Read')['Username'].tolist())}
+- Average Posts per User: {table_data['Posts Read'].mean():.1f}
+- Users with >100 Posts: {len(table_data[table_data['Posts Read'] > 100])}
+"""
+            elif "organization" in context.lower():
+                summary = f"""
+Summary Statistics:
+- Total Organizations: {len(table_data)}
+- Top 5 Organizations by Users: {', '.join(table_data.nlargest(5, 'Number of Users')['Organization'].tolist())}
+- Average Users per Organization: {table_data['Number of Users'].mean():.1f}
+- Organizations with >10 Users: {len(table_data[table_data['Number of Users'] > 10])}
+"""
+            else:
+                summary = f"""
+Summary Statistics:
+- Total Entries: {len(table_data)}
+- Top 5 Countries by Users: {', '.join(table_data.nlargest(5, 'Number of Users')['Country'].tolist())}
+- Average Users per Country: {table_data['Number of Users'].mean():.1f}
+"""
+        else:
+            formatted_data = str(table_data)
+            summary = ""
+        
+        # Create context-appropriate analysis prompt
+        if "most active users" in context.lower():
+            analysis_prompt = f"""As Midori Masuda, analyze this user activity data and provide sales-focused insights and recommendations:
+
+Context: {context}
+
+{summary}
+
+Detailed Data:
+{formatted_data}
+
+Please provide a concise analysis focusing on:
+
+1. User Engagement Insights:
+   - Which users show the highest engagement levels?
+   - What patterns exist in user activity across different locations?
+   - Which organizations have the most active users?
+
+2. Market Insights:
+   - Geographic distribution of highly engaged users
+   - Organization patterns among top users
+   - Engagement trends across different regions
+
+3. Strategic Recommendations:
+   - How to leverage highly engaged users for growth
+   - Suggested engagement strategies for different regions
+   - Potential partnership opportunities with active users' organizations
+   - Ways to increase engagement in less active regions
+
+Keep the analysis practical and actionable, focusing on concrete steps to drive user engagement and sales growth."""
+        elif "organization" in context.lower():
+            analysis_prompt = f"""As Midori Masuda, analyze this organization data and provide sales-focused insights and recommendations:
+
+Context: {context}
+
+{summary}
+
+Detailed Data:
+{formatted_data}
+
+Please provide a concise analysis focusing on:
+
+1. Sales Opportunities:
+   - Which organizations show the highest potential for expansion? (excluding internal/individual organizations)
+   - Where are the largest untapped customer bases?
+   - Which organizations have the most engaged users?
+   - Identify organizations that could be high-value sales targets
+
+2. Market Insights:
+   - Key organization concentration patterns
+   - Industry distribution and trends
+   - Organization size and engagement patterns
+   - Market segments with the most potential
+
+3. Strategic Recommendations:
+   - Priority organizations for sales team focus (excluding internal/individual organizations)
+   - Suggested resource allocation
+   - Specific growth opportunities
+   - Potential partnership or expansion targets
+   - Recommended sales approach for different organization types
+
+Keep the analysis practical and actionable, focusing on concrete steps to drive sales growth. Exclude any internal organizations or individual users from the analysis."""
+        else:
+            analysis_prompt = f"""As Midori Masuda, analyze this data table and provide sales-focused insights and recommendations:
+
+Context: {context}
+
+{summary}
+
+Detailed Data:
+{formatted_data}
+
+Please provide a concise analysis focusing on:
+
+1. Sales Opportunities:
+   - Which regions/countries show the highest potential for growth?
+   - Where are the largest untapped markets?
+   - Which areas have the most engaged users?
+
+2. Market Insights:
+   - Key market concentration patterns
+   - Geographic distribution of user engagement
+   - Regional market maturity indicators
+
+3. Strategic Recommendations:
+   - Priority regions for sales team focus
+   - Suggested resource allocation
+   - Specific growth opportunities
+   - Potential partnership or expansion targets
+
+Keep the analysis practical and actionable, focusing on concrete steps to drive sales growth."""
+
+        # Get analysis from OpenAI with retry logic
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Use OpenAI client directly
+                import openai
+                openai.api_key = st.secrets["openai"]["api_key"]
+                
+                response = openai.ChatCompletion.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": analysis_prompt}
+                    ],
+                    temperature=0.1,
+                    max_tokens=1000
+                )
+                
+                analysis = response.choices[0].message.content
+                if analysis and len(analysis.strip()) > 0:
+                    return analysis
+            except Exception as e:
+                logger.error(f"Attempt {attempt + 1} failed: {str(e)}")
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(1)  # Wait before retrying
+        
+        return "Unable to generate analysis at this time. Please try again."
+        
+    except Exception as e:
+        logger.error(f"Error in table analysis: {str(e)}", exc_info=True)
+        return f"Unable to generate analysis at this time. Error: {str(e)}"
 
 if __name__ == "__main__":
     main()
