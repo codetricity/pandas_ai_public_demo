@@ -1,7 +1,6 @@
 import pandas as pd
 from pandasai import SmartDataframe
 from pandasai.llm.openai import OpenAI
-from config import OPENAI_API_KEY
 import time
 import logging
 import numpy as np
@@ -37,7 +36,7 @@ log_step(f"Loaded DataFrame with shape: {df.shape}")
 # LLM setup
 log_step("Initializing OpenAI LLM...")
 llm = OpenAI(
-    api_token=OPENAI_API_KEY,
+    api_token=st.secrets["openai"]["api_key"],
     options={
         "model": "gpt-4",
         "temperature": 0.1,  # Lower temperature for more focused responses

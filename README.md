@@ -21,8 +21,6 @@ pip install -r requirements.txt
 
 ## setup of security
 
-* put OpenAI API key on config.py.  use config.py.example as reference
-`OPENAI_API_KEY = "sk-proj..."`
 * create `./streamlit/secrets.toml`
 
 ```text
@@ -30,6 +28,9 @@ password = "put_secret_password here"
 
 [data]
 gdrive_file_id = "put google sheets file id here"
+
+[openai]
+api_key = "sk-proj..."
 ```
 
 ## run
