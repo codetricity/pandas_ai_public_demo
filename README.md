@@ -4,7 +4,7 @@ using camera360 user data
 
 ## python setup
 
-* python must be 3.11.9 or slightly older.  will not work
+* python must be 3.11.9.  will not work
 with 3.12.*
 * suggest using pyenv to setup python version
 
