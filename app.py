@@ -234,6 +234,7 @@ def execute_query(query):
                 us_variants = {
                     "usa": "United States",
                     "us": "United States",
+                    "the united states": "United States",
                     "united states": "United States",
                     "america": "United States",
                     "u.s.": "United States",
@@ -469,6 +470,11 @@ def execute_query(query):
             # Create a clean DataFrame for analysis
             clean_df = df.copy()
             
+            # Debug: Print all unique locations at the start
+            all_locations = clean_df['last_ip_location'].dropna().unique()
+            log_step("All unique locations in dataset:")
+            log_step(str(all_locations))
+            
             # Extract location name from query
             query_lower = query.lower()
             location = None
@@ -491,6 +497,9 @@ def execute_query(query):
                     location = parts[-1].strip().title()
                     # Remove any trailing words or punctuation
                     location = location.split(' and ')[0].split(' or ')[0].split(',')[0].strip()
+                    # Remove leading "The " if present
+                    if location.lower().startswith('the '):
+                        location = location[4:]
             
             # Handle US variations
             us_variants = {
@@ -507,23 +516,57 @@ def execute_query(query):
                 location = "United States"
             
             if location:
-                # Try both location and organization matches (case-insensitive)
-                location_lower = location.lower()
+                # Debug: Print extracted location
+                log_step(f"Searching for location: {location}")
+                
+                # More comprehensive US location matching
+                if location == "United States":
+                    # Debug: Print sample of data before matching
+                    sample_locations = clean_df['last_ip_location'].dropna().head(20)
+                    log_step("Sample of location data:")
+                    log_step(str(sample_locations))
+                    
+                    location_mask = (
+                        clean_df['last_ip_location'].fillna('').str.lower().str.contains('united states', case=False, na=False) |
+                        clean_df['last_ip_location'].fillna('').str.lower().str.contains('usa', case=False, na=False) |
+                        clean_df['last_ip_location'].fillna('').str.lower().str.contains('u.s.', case=False, na=False) |
+                        clean_df['last_ip_location'].fillna('').str.lower().str.contains('america', case=False, na=False) |
+                        clean_df['last_ip_location'].fillna('').str.lower().str.contains(' us', case=False, na=False) |
+                        clean_df['last_ip_location'].fillna('').str.lower().str.contains(', us', case=False, na=False)
+                    )
+                else:
+                    # For other locations, use more flexible matching
+                    location_mask = clean_df['last_ip_location'].fillna('').str.contains(location.lower(), case=False, na=False)
+                
+                # Debug: Print matching results
+                matching_locations = clean_df[location_mask]['last_ip_location'].unique()
+                log_step(f"Found {len(matching_locations)} matching locations:")
+                log_step(str(matching_locations))
+                
+                # Debug: Print counts at each step
+                total_before_name = len(clean_df[location_mask])
+                log_step(f"Total users before name filter: {total_before_name}")
+                
+                # Check name column
+                log_step("Sample of name column data:")
+                log_step(str(clean_df['name'].head(20)))
+                
                 country_users = clean_df[
-                    # Match location and ensure name is not empty/null
-                    (
-                        (clean_df['last_ip_location'].fillna('').str.lower() == location_lower) |  # exact match
-                        (clean_df['last_ip_location'].fillna('').str.lower().str.endswith(f", {location_lower}"))  # city, country match
-                    ) &
+                    location_mask &
                     (clean_df['name'].notna()) &  # name is not null
                     (clean_df['name'].str.strip() != '')  # name is not empty string
                 ]
+                
+                # Debug: Print counts after name filter
+                total_after_name = len(country_users)
+                log_step(f"Total users after name filter: {total_after_name}")
                 
                 # Sort by city name to group users by location
                 users_to_show = country_users.sort_values('last_ip_location')
                 
                 if len(users_to_show) == 0:
-                    return f"No users with names found in {location}"
+                    # Debug: Show total users before filtering
+                    return f"No users with names found in {location}. Found {total_before_name} total users but none had names. Debug info: {len(matching_locations)} matching locations found."
                 
                 response = f"### 👥 Named Users in {location} ({len(users_to_show)} users)\n\n"
                 
