@@ -111,16 +111,6 @@ def check_password():
     return False
 
 
-def pulse_image(image_container, base_opacity=1.0, pulse_range=0.3, duration=1.0):
-    """Pulse the image opacity up and down"""
-    start_time = time.time()
-    while time.time() - start_time < duration:
-        # Calculate current opacity using a sine wave
-        current_opacity = base_opacity - pulse_range * (1 + math.sin(time.time() * 4 * math.pi / duration)) / 2
-        # Use Streamlit's native image display with opacity
-        image_container.image("images/midori_poses/midori_1.png", width=100, use_column_width=False)
-        time.sleep(0.05)  # Update every 50ms
-
 def main():
     st.title("Midori Masuda - Oppkey Assistant")
 
@@ -151,14 +141,15 @@ def main():
             with st.chat_message("user"):
                 st.markdown(message["content"])
         else:
-            # Randomly select between the three Midori poses
-            midori_pose = random.choice([
-                "images/midori_poses/midori_1.png",
-                "images/midori_poses/midori_2.png",
-                "images/midori_poses/midori_3.png"
-            ])
-            st.image(midori_pose, width=100)
-            st.markdown(message["content"])
+            with st.chat_message("assistant"):
+                # Randomly select between the three Midori poses
+                midori_pose = random.choice([
+                    "images/midori_poses/midori_1.png",
+                    "images/midori_poses/midori_2.png",
+                    "images/midori_poses/midori_3.png"
+                ])
+                st.image(midori_pose, width=100)
+                st.markdown(message["content"])
 
     # Chat input
     if prompt := st.chat_input("Ask a question about your dataset"):
@@ -167,19 +158,20 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Show Midori's image while processing
-        midori_pose = random.choice([
-            "images/midori_poses/midori_1.png",
-            "images/midori_poses/midori_2.png",
-            "images/midori_poses/midori_3.png"
-        ])
-        st.image(midori_pose, width=100)
+        with st.chat_message("assistant"):
+            # Show Midori's image while processing
+            midori_pose = random.choice([
+                "images/midori_poses/midori_1.png",
+                "images/midori_poses/midori_2.png",
+                "images/midori_poses/midori_3.png"
+            ])
+            st.image(midori_pose, width=100)
 
-        # Get the response
-        response = execute_query(prompt)
-        
-        st.markdown(response)
-        st.session_state.messages.append({"role": "assistant", "content": response})
+            # Get the response
+            response = execute_query(prompt)
+            
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
 
 
 def execute_query(query):
